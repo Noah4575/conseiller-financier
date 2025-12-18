@@ -3,7 +3,7 @@ import streamlit as st
 
 from langchain_core.messages import HumanMessage, AIMessage
 
-from llm.llm import initialize_model
+from llm.llm_sogpt import initialize_model
 
 
 # --- 1. Core Setup and Initialization ---
