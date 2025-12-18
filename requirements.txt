@@ -3,4 +3,5 @@ langchain
 langchain_google_genai
 langchain_cohere
 langgraph
-pandas
+python-dotenv
+fastapi

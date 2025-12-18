@@ -9,11 +9,9 @@ import FAISS
 import os
 
 
-def initialize_models():
+def initialize_embeddings():
     embeddings = CohereEmbeddings(model="embed-multilingual-light-v3.0")
-    model = init_chat_model("gemini-2.5-flash-lite",
-                            model_provider="google_genai")
-    return embeddings, model
+    return embeddings
 
 
 def setup_hybrid_retriever(embeddings):
