@@ -40,7 +40,8 @@ if user_input := st.chat_input("Votre demande..."):
     # 2. Run the AI (Synchronously)
     with st.chat_message("assistant"):
         config = {"configurable": {"thread_id": st.session_state.thread_id}}
-        inputs = {"messages": [HumanMessage(content=user_input)], "language": "Français"}
+        inputs = {"messages": [HumanMessage(content=user_input)],
+                  "language": "Français"}
 
         # Container for the text stream
         message_placeholder = st.empty()
@@ -53,7 +54,8 @@ if user_input := st.chat_input("Votre demande..."):
                 msg = event["messages"][-1]
 
                 # Check if it's a final response (not a tool call)
-                if isinstance(msg, AIMessage) and msg.content and not msg.tool_calls:
+                if (isinstance(msg, AIMessage) and msg.content
+                   and not msg.tool_calls):
                     full_response = msg.content
                     message_placeholder.markdown(full_response)
 

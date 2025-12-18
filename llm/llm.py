@@ -1,21 +1,18 @@
 from langchain.chat_models import init_chat_model
-from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langgraph.graph.message import add_messages  # type: ignore
-from langgraph.graph import StateGraph, START, END
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import StateGraph, START, END  # type: ignore
+from langgraph.checkpoint.memory import MemorySaver  # type: ignore
 
 import os
 import streamlit as st
-from typing import Sequence, Annotated, TypedDict
 from dotenv import load_dotenv
 from llm.core import State
 from tools.simul_credit import simul_credit
-# --- 1. Core Setup and Initialization ---
 
+# --- 1. Core Setup and Initialization ---
 # Load environment variables
 load_dotenv()
-# Required for tracing and API access
 os.environ["LANGCHAIN_TRACING_V2"] = os.getenv("LANGCHAIN_TRACING_V2", "false")
 os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY", "")
 os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY", "")
@@ -34,22 +31,28 @@ def initialize_model():
         st.stop()
 
     prompt = ChatPromptTemplate.from_messages([
-        ("system", """Tu es un conseiller financier expert et dédié d'une banque de Côte d'Ivoire.
-            Ta clientèle est "High-Net-Worth" (Haut de gamme). Tu dois être courtois, précis et professionnel.
-
+        ("system", """Tu es un conseiller financier expert et dédié d'une
+              banque de Côte d'Ivoire. Ta clientèle est "High-Net-Worth"
+              (Haut de gamme). Tu dois être courtois, précis et professionnel.
             Ton périmètre d'expertise couvre TOUS les produits SGCI :
-            1. **Banque au quotidien** : Gestion de comptes courants, cartes Visa (Gold, Infinite), virements internationaux.
-            2. **Épargne & Placements** : DAT (Dépôts à Terme), Comptes Épargne, FCP (Fonds Communs de Placement sur la BRVM).
-            3. **Assurances** : Assurance vie, protection des moyens de paiement, assurance voyage.
+            1. **Banque au quotidien** : Gestion de comptes courants,
+              cartes Visa (Gold, Infinite), virements internationaux.
+            2. **Épargne & Placements** : DAT (Dépôts à Terme), Comptes
+              Épargne, FCP (Fonds Communs de Placement sur la BRVM).
+            3. **Assurances** : Assurance vie, protection des moyens
+               de paiement, assurance voyage.
             4. **Crédits** : Immobilier et Consommation.
-
             RÈGLES IMPORTANTES :
-            - Si l'utilisateur parle de crédit, propose de faire une simulation.
-            - Pour la simulation, utilise l'outil `simul_credit` UNIQUEMENT si tu as les 3 infos : revenus mensuels, montant, durée.
-            - Si l'utilisateur pose une question vague (ex: "Je veux investir"), demande des précisions sur ses objectifs (rendement, sécurité, horizon de temps) avant de proposer des produits SGCI.
+            - Si l'utilisateur parle de crédit, propose de faire
+              une simulation.
+            - Pour la simulation, utilise l'outil `simul_credit` UNIQUEMENT si
+               tu as les 3 infos : revenus mensuels, montant, durée.
+            - Si l'utilisateur pose une question vague (ex: "Je veux investir")
+              , demande des précisions sur ses objectifs (rendement, sécurité,
+              horizon de temps) avant de proposer des produits SGCI.
             - La monnaie de référence est le FCFA (Franc CFA).
-
-            Ne force pas la vente. Agis comme un partenaire de confiance pour la gestion de leur patrimoine en Côte d'Ivoire.
+            Ne force pas la vente. Agis comme un partenaire de confiance pour
+              la gestion de leur patrimoine en Côte d'Ivoire.
             """),
         MessagesPlaceholder(variable_name="messages"),
     ])
@@ -69,7 +72,8 @@ def initialize_model():
         for tool_call in last_message.tool_calls:
             tool_func = tool_map[tool_call["name"]]
             output = tool_func.invoke(tool_call["args"])
-            tool_messages.append(ToolMessage(content=str(output), tool_call_id=tool_call["id"]))
+            tool_messages.append(ToolMessage(content=str(output),
+                                             tool_call_id=tool_call["id"]))
         return {"messages": tool_messages}
 
     def should_continue(state: State):
