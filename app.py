@@ -1,13 +1,11 @@
-import asyncio
 import streamlit as st
 
 from langchain_core.messages import HumanMessage, AIMessage
 
-from llm.llm_sogpt import initialize_model
+from llm.llm import initialize_model
 
 
 # --- 1. Core Setup and Initialization ---
-# Streamlit App Configuration
 st.set_page_config(page_title="Conseiller Financier IA", layout="wide")
 st.title("👨‍💼 Conseiller Financier IA (Crédit)")
 
@@ -15,8 +13,6 @@ st.title("👨‍💼 Conseiller Financier IA (Crédit)")
 app = initialize_model()
 
 # --- 2. Chat History Management (State) ---
-
-# Initialize chat history in Streamlit session state
 if "messages" not in st.session_state:
     st.session_state.messages = [
         AIMessage(content="Bonjour! Je suis votre conseiller financier expert."
@@ -26,10 +22,7 @@ if "messages" not in st.session_state:
 if "thread_id" not in st.session_state:
     # Use a fixed thread ID for persistent memory across the session
     st.session_state.thread_id = "stream_session_123"
-# Updated stream_response for streamlit_app.py
 
-# --- 4. Streamlit UI Loop ---
-# Display existing messages
 for message in st.session_state.messages:
     if isinstance(message, HumanMessage):
         with st.chat_message("user"):
@@ -58,11 +51,11 @@ if user_input := st.chat_input("Votre demande..."):
         for event in app.stream(inputs, config, stream_mode="values"):
             if "messages" in event:
                 msg = event["messages"][-1]
-                
+
                 # Check if it's a final response (not a tool call)
                 if isinstance(msg, AIMessage) and msg.content and not msg.tool_calls:
                     full_response = msg.content
                     message_placeholder.markdown(full_response)
-        
+
         # Save final response to history
         st.session_state.messages.append(AIMessage(content=full_response))

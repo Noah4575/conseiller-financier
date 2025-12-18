@@ -59,8 +59,8 @@ def initialize_model():
     model_with_tools = model.bind_tools(tools)
     chain = prompt | model_with_tools
 
-    async def call_model(state: State):
-        response = await chain.ainvoke(state)
+    def call_model(state: State):
+        response = chain.invoke(state)
         return {"messages": response}
 
     def execute_tools(state: State):
