@@ -4,7 +4,6 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 from llm.llm import initialize_model
 
-
 # --- 1. Core Setup and Initialization ---
 st.set_page_config(page_title="Conseiller Financier IA", layout="wide")
 st.title("👨‍💼 Conseiller Financier IA (Crédit)")

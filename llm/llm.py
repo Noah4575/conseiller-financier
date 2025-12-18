@@ -3,20 +3,20 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.graph import StateGraph, START, END  # type: ignore
 from langgraph.checkpoint.memory import MemorySaver  # type: ignore
+from functools import partial
 
 import os
 import streamlit as st
 from dotenv import load_dotenv
 from llm.core import State
 from tools.simul_credit import simul_credit
+from rag.rag import retrieve, setup_hybrid_retriever, initialize_embeddings
 
 # --- 1. Core Setup and Initialization ---
 # Load environment variables
 load_dotenv()
-os.environ["LANGCHAIN_TRACING_V2"] = os.getenv("LANGCHAIN_TRACING_V2", "false")
-os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY", "")
-os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY", "")
-
+os.environ["LANGCHAIN_TRACING_V2"] = os.environ.get("LANGCHAIN_TRACING_V2")
+os.environ["LANGCHAIN_API_KEY"] = os.environ.get("LANGCHAIN_API_KEY")
 
 # Initialize the Gemini model (using st.cache_resource for efficiency)
 @st.cache_resource
@@ -31,8 +31,8 @@ def initialize_model():
         st.stop()
 
     prompt = ChatPromptTemplate.from_messages([
-        ("system", """Tu es un conseiller financier expert et dédié d'une
-              banque de Côte d'Ivoire. Ta clientèle est "High-Net-Worth"
+        ("system", """Tu es un conseiller financier expert et dédié de Société
+            Générale Côte d'Ivoire (SGCI). Ta clientèle est "High-Net-Worth"
               (Haut de gamme). Tu dois être courtois, précis et professionnel.
             Ton périmètre d'expertise couvre TOUS les produits SGCI :
             1. **Banque au quotidien** : Gestion de comptes courants,
@@ -82,10 +82,20 @@ def initialize_model():
             return "tools"
         return END
 
+    embeddings = initialize_embeddings()
+    hybrid_retriever = setup_hybrid_retriever(embeddings)
+
+    retrieve_node = partial(
+        retrieve,
+        hybrid_retriever=hybrid_retriever
+    )
+
     workflow = StateGraph(State)
     workflow.add_node("model", call_model)
+    workflow.add_node("retrieve", retrieve_node)
     workflow.add_node("tools", execute_tools)
-    workflow.add_edge(START, "model")
+    workflow.add_edge(START, "retrieve")
+    workflow.add_edge("retrieve", "model")
     workflow.add_conditional_edges("model", should_continue, {"tools": "tools",
                                                               END: END})
     workflow.add_edge("tools", "model")

@@ -5,3 +5,6 @@ langchain_cohere = 1.2.0
 langgraph = 1.0.5
 python-dotenv = 1.2.1
 fastapi = 0.125.0
+faiss-cpu
+rank_bm25
+nltk
