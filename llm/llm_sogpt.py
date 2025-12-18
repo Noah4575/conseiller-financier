@@ -24,7 +24,7 @@ def initialize_model():
     """Initializes the LLM and the LangGraph application."""
     model = init_chat_model("gemini-2.5-flash-lite",
                             model_provider="google_genai")
-    
+
     prompt = ("system", """Tu es un conseiller financier expert et dédié d'une banque de Côte d'Ivoire.
             Ta clientèle est "High-Net-Worth" (Haut de gamme). Tu dois être courtois, précis et professionnel.
 
