@@ -1,56 +1,274 @@
 from langchain_cohere import CohereEmbeddings  # type: ignore
-from langchain_community.document_transformers import LongContextReorder
-# from langchain_core.documents import Document
-from langchain_classic.retrievers import EnsembleRetriever  # type: ignore
-from llm.core import State
-import pickle
 from langchain_community.vectorstores import FAISS
+from langchain_community.document_loaders import WebBaseLoader, DataFrameLoader
+from langchain_community.retrievers import BM25Retriever
+from langchain_experimental.text_splitter import SemanticChunker  # type:ignore
+from langchain.retrievers import ParentDocumentRetriever
+from langchain.storage import InMemoryStore
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from nltk.tokenize import word_tokenize
+from dotenv import load_dotenv
+import pandas as pd
+import pickle
+import nltk
+import bs4
 import os
 
 
-def initialize_embeddings():
-    embeddings = CohereEmbeddings(model="embed-multilingual-light-v3.0")
-    return embeddings
+# Pages du Site Web SGCI
+urls = {
+        "https://institutionnel.societegenerale.ci/fr/votre-banque/historique/":{"class_":"col-md-9 mainCol"},
+        "https://particuliers.societegenerale.ci/fr/devenir-client/ouvrir-compte/":{"class_":"dce dce-accordeon"},
+        "https://particuliers.societegenerale.ci/fr/devenir-client/nous-contacter/":{"id":"c16077"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/comptes/compte-cheque/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/comptes/compte-eco/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/comptes/compte-euro/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/packages/pack-premier/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/packages/pack-classic/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/packages/pack-infinite/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/packages/pack-diaspora/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/services-connexes/change-manuel/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/services-connexes/coffre-fort/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/emprunter/decouvert-compte/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/emprunter/pret-consommation/pret-scolaire/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/emprunter/pret-consommation/pret-personnel-ordinaire/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/emprunter/pret-consommation/pret-personnel-ordinaire-installation-plus/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/emprunter/pret-consommation/avance-conventionnelle-tresorerie/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/emprunter/prets-immobiliers/pret-personnel-immobilier/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/produits-banque-distance/messalia/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/produits-banque-distance/vocalia-plus/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/produits-banque-distance/connect-lappli-mobile-web-societe-generale-cote-divoire/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/produits-banque-distance/politique-confidentialite/":{"id":"c16130"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/produits-banque-distance/yeri/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/cartes-bancaires/carte-eclair/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/cartes-bancaires/carte-visa-horizon/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/cartes-bancaires/carte-visa-classic/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/cartes-bancaires/carte-visa-premier/":{"class_git ":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/cartes-bancaires/carte-visa-platinum/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/banque-quotidien/cartes-bancaires/carte-visa-infinite/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/assurer/assurance-vie/soge-invest-premium/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/assurer/assurance-vie/plan-retraite-zenith-performance/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/assurer/assurance-vie/yaconfort-premium/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/assurer/assurance-vie/yaconfort/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/assurer/assurance-vie/certicompte/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/assurer/assurance-vie/sogetudes/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/assurer/assurance-non-vie/assurance-voyage/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/assurer/assurance-non-vie/assurance-multirisques-habitation/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/assurer/assurance-non-vie/quietis-plus/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/epargner/epargne/plan-epargne-taux-progressif/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/epargner/epargne/compte-epargne/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/epargner/epargne/credimatic/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/epargner/epargne/plan-epargne-logement/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/epargner/epargne/sogeprimo/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/epargner/placements/depots-terme/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/epargner/placements/bourse/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/epargner/placements/car/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/epargner/placements/compte-titres/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/epargner/placements/fonds-communs-placement/":{"class_":"dce_tabs_content"},
+        "https://particuliers.societegenerale.ci/fr/faq/":{"class_":"col-md-9 mainCol"}
+        }
+
+
+def load_docs(urls):
+    '''Chargement du contenu des URLs dans des documents'''
+    all_docs = []
+    for url, parse_class in urls.items():
+        try:
+            print(url)
+            strainer = bs4.SoupStrainer(**parse_class)
+            loader = WebBaseLoader(
+                web_paths=[url],
+                bs_kwargs={"parse_only": strainer}
+                )
+            docs = loader.load()
+            for doc in docs:
+                doc.metadata["source"] = url
+                doc.metadata["loaded_at"] = str(pd.Timestamp.now())
+            all_docs.extend(docs)
+
+        except Exception as e:
+            print(f"✗ Error loading {url}: {e}")
+            continue
+
+    return all_docs
+
+
+def load_excel(file_path):
+    '''Charge et nettoie les documents depuis le fichier CSV des produits.'''
+
+    print(f"Chargement du fichier excel produits : {file_path}")
+
+    try:
+        # 1. Charger avec pandas, en sautant les 2 premières lignes
+        #    Les vrais en-têtes sont à la ligne 3 (index 2)
+        df = pd.read_excel(file_path, header=2)
+    except Exception as e:
+        print(f"❌ Erreur lors de la lecture du CSV : {e}")
+        return []
+
+    # 2. Renommer les colonnes (basé sur l'inspection)
+    df = df.rename(columns={
+        df.columns[0]: "Produit",
+        df.columns[1]: "Cible",
+        df.columns[2]: "Descriptif",
+        df.columns[3]: "Tarif"
+    })
+
+    # 3. Nettoyer les lignes vides (où 'Produit' est manquant)
+    df = df.dropna()
+    # Supprimer la première ligne
+    df = df.iloc[1:]
+
+    # Supprimer les \n dans les colonnes texte
+    df['Produit'] = df['Produit'].str.replace('\n', ' ', regex=False)
+    df['Cible'] = df['Cible'].str.replace('\n', ' ', regex=False)
+    df['Descriptif'] = df['Descriptif'].str.replace('\n', ' ', regex=False)
+    df['Tarif'] = df['Tarif'].str.replace('\n', ' ', regex=False)
+
+    # 4. CRÉER LE CONTENU DU RAG
+    # Nous combinons les colonnes en un seul 'page_content'
+    # C'est ce qui sera vectorisé.
+    df['page_content'] = (
+        "Produit: " + df['Produit'].astype(str) + "; "
+        "Description: " + df['Descriptif'].astype(str) + "; "
+        "Cible: " + df['Cible'].astype(str) + "; "
+        "Tarif: " + df['Tarif'].astype(str)
+    )
+
+    # 5. Utiliser DataFrameLoader pour convertir en Documents
+    loader = DataFrameLoader(df, page_content_column="page_content")
+    docs = loader.load()
+
+    # 6. Ajouter la source (le nom du fichier) aux métadonnées
+    for doc in docs:
+        doc.metadata["source"] = file_path
+
+    print(f"✅ {len(docs)} documents produits chargés depuis le CSV.")
+    return docs
+
+
+def split_docs(all_docs, embeddings):
+    '''Split les documents en chunks'''
+    text_splitter = SemanticChunker(embeddings)
+    all_splits = text_splitter.split_documents(all_docs)
+    return all_splits
+
+
+def extract_topic_from_url(url: str) -> str:
+    """
+    Transforme une URL en un sujet lisible.
+    Ex: .../pret-consommation/pret-scolaire/ -> "pret consommation
+      pret scolaire"
+    """
+    try:
+        # Enlève la base et la fin
+        parts = url.strip('/').split('/')
+        # Garde les 3 dernières parties (ex: 'emprunter', 'pret-consommation',
+        #  'pret-scolaire')
+        relevant_parts = parts[-3:]
+        # Remplace les tirets par des espaces
+        topic = " ".join(part.replace('-', ':') for part in relevant_parts)
+
+        return topic
+    except Exception:
+        # Fallback si l'URL est étrange
+        return "information generale"
+
+
+def create_pc_retriever(all_docs, embeddings):
+    # 1. Le splitter pour les documents "Parents" (le contexte pour le LLM)
+    parent_splitter = RecursiveCharacterTextSplitter(chunk_size=1500)
+
+    # 2. Le splitter pour les documents "Enfants" (pour l'indexation)
+    child_splitter = RecursiveCharacterTextSplitter(chunk_size=300)
+
+    # 3. La base de données vectorielle qui stockera les "Enfants"
+    # On utilise un index vide au départ
+    vectorstore = FAISS.from_texts(["initialization"], embeddings)
+
+    # 4. Le stockage en mémoire pour les "Parents"
+    store = InMemoryStore()
+
+    # 5. Création du Retriever
+    pc_retriever = ParentDocumentRetriever(
+        vectorstore=vectorstore,
+        docstore=store,
+        child_splitter=child_splitter,
+        parent_splitter=parent_splitter,
+    )
+
+    # Ajout des documents (le retriever s'occupe de faire les deux découpages)
+    pc_retriever.add_documents(all_docs)
+
+    return pc_retriever
+
+
+def create_sparse_retriever(all_splits):
+    '''Création d'un sparse retriever BM25'''
+    sparse_retriever = BM25Retriever.from_documents(
+        all_splits, k=6, preprocess_func=word_tokenize)
+    return sparse_retriever
+
+
+def save_stores(pc_retriever, sparse_retriever,
+                FAISS_INDEX_PATH, BM25_RETRIEVER_PATH):
+    '''Sauvegarde des retrievers pour éviter de les refaire à chaque fois'''
+    pc_retriever.save_local(FAISS_INDEX_PATH)
+
+    with open(BM25_RETRIEVER_PATH, "wb") as f:
+        pickle.dump(sparse_retriever, f)
 
 
 def load_stores(embeddings, FAISS_INDEX_PATH, BM25_RETRIEVER_PATH):
-    dense_store = FAISS.load_local(FAISS_INDEX_PATH, embeddings,
-                                   allow_dangerous_deserialization=True)
+    pc_retriever = FAISS.load_local(FAISS_INDEX_PATH, embeddings,
+                                    allow_dangerous_deserialization=True)
     '''Chargement des retrievers précédemment sauvegardés'''
 
     with open(BM25_RETRIEVER_PATH, "rb") as f:
         sparse_retriever = pickle.load(f)
 
-    return dense_store, sparse_retriever
+    return pc_retriever, sparse_retriever
 
 
-def setup_hybrid_retriever(embeddings):
+def main():
+    # Setup
+    load_dotenv()
+    os.environ["COHERE_API_KEY"] = os.environ.get("COHERE_API_KEY")
+    embeddings = CohereEmbeddings(model="embed-multilingual-light-v3.0")
+
     FAISS_INDEX_PATH = os.environ.get("FAISS_INDEX_PATH")
     BM25_RETRIEVER_PATH = os.environ.get("BM25_RETRIEVER_PATH")
+    PRODUCTS_PATH = os.environ.get("PRODUCTS_PATH")
 
-    dense_store, sparse_retriever = load_stores(embeddings, FAISS_INDEX_PATH,
-                                                BM25_RETRIEVER_PATH)
+    nltk.download("punkt_tab")
+    # Load, split, create and save stores
+    all_docs = load_docs(urls)
+    xls_docs = load_excel(PRODUCTS_PATH)
+    all_docs.extend(xls_docs)
+    all_splits = split_docs(all_docs, embeddings)
 
-    hybrid_retriever = EnsembleRetriever(
-        retrievers=[dense_store.as_retriever(search_kwargs={"k": 6}),
-                    sparse_retriever],
-        weights=[0.6, 0.4],
-    )
-    return hybrid_retriever
+    print("Enrichissement des chunks avec les métadonnées de source...")
+    for split in all_splits:
+        source_url = split.metadata.get("source")
+
+        if source_url:
+            # Extraire un sujet lisible de l'URL
+            topic = extract_topic_from_url(source_url)
+
+            # Préfixer le contenu original avec le sujet
+            original_content = split.page_content
+            split.page_content = (
+                f"Sujet de la page: {topic}\n\n"
+                f"Contenu: {original_content}"
+            )
+    print("✅ Chunks enrichis.")
+
+    pc_retriever = create_pc_retriever(all_splits, embeddings)
+    sparse_retriever = create_sparse_retriever(all_splits)
+
+    save_stores(pc_retriever, sparse_retriever,
+                FAISS_INDEX_PATH, BM25_RETRIEVER_PATH)
 
 
-def retrieve(state: State, hybrid_retriever: EnsembleRetriever):
-
-    question = state["messages"][-1].content
-
-    # Préparer les tâches de recherche
-    retrieved_docs = hybrid_retriever.invoke(question)
-
-    # Traiter les résultats
-    reordering = LongContextReorder()
-    docs = reordering.transform_documents(retrieved_docs)
-
-    return {
-        "context": docs,
-        "question": question
-    }
+if __name__ == "__main__":
+    main()

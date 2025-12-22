@@ -10,7 +10,7 @@ import streamlit as st
 from dotenv import load_dotenv
 from llm.core import State
 from tools.simul_credit import simul_credit
-from rag.rag import retrieve, setup_hybrid_retriever, initialize_embeddings
+from rag.retriever import retrieve, setup_hybrid_retriever, initialize_embeddings
 
 # --- 1. Core Setup and Initialization ---
 # Load environment variables
@@ -31,29 +31,31 @@ def initialize_model():
         st.stop()
 
     prompt = ChatPromptTemplate.from_messages([
-        ("system", """Tu es un conseiller financier expert et dédié de Société
-            Générale Côte d'Ivoire (SGCI). Ta clientèle est "High-Net-Worth"
-              (Haut de gamme). Tu dois être courtois, précis et professionnel.
-            Ton périmètre d'expertise couvre TOUS les produits SGCI :
-            1. **Banque au quotidien** : Gestion de comptes courants,
-              cartes Visa (Gold, Infinite), virements internationaux.
-            2. **Épargne & Placements** : DAT (Dépôts à Terme), Comptes
-              Épargne, FCP (Fonds Communs de Placement sur la BRVM).
-            3. **Assurances** : Assurance vie, protection des moyens
-               de paiement, assurance voyage.
-            4. **Crédits** : Immobilier et Consommation.
-            RÈGLES IMPORTANTES :
-            - Si l'utilisateur parle de crédit, propose de faire
-              une simulation.
-            - Pour la simulation, utilise l'outil `simul_credit` UNIQUEMENT si
-               tu as les 3 infos : revenus mensuels, montant, durée.
-            - Si l'utilisateur pose une question vague (ex: "Je veux investir")
-              , demande des précisions sur ses objectifs (rendement, sécurité,
-              horizon de temps) avant de proposer des produits SGCI.
-            - La monnaie de référence est le FCFA (Franc CFA).
-            Ne force pas la vente. Agis comme un partenaire de confiance pour
-              la gestion de leur patrimoine en Côte d'Ivoire.
-            """),
+        ("system", "Tu es un conseiller financier expert et dédié de Société "
+            "Générale Côte d'Ivoire (SGCI). Ta clientèle est 'High-Net-Worth' "
+            "(Haut de gamme). Tu dois être courtois, précis et professionnel. "
+            "Ton périmètre d'expertise couvre TOUS les produits SGCI : "
+            "1. **Banque au quotidien** : Gestion de comptes courants, "
+            "cartes Visa (Gold, Infinite), virements internationaux. "
+            "2. **Épargne & Placements** : DAT (Dépôts à Terme), Comptes "
+            "Épargne, FCP (Fonds Communs de Placement sur la BRVM). "
+            "3. **Assurances** : Assurance vie, protection des moyens "
+            "de paiement, assurance voyage. "
+            "4. **Crédits** : Immobilier et Consommation. "
+            "RÈGLES IMPORTANTES : "
+            "- Soit précis et explique bien les produits SGCI adaptés aux "
+            "besoins exprimés par l'utilisateur. "
+            "- Si l'utilisateur te demande explicitement une simulation de "
+            "crédit, utilise l'outil `simul_credit` UNIQUEMENT si "
+            "tu as les 3 infos : revenus mensuels, montant, durée. "
+            "- Si l'utilisateur pose une question vague, "
+            "demande des précisions sur ses objectifs (rendement, sécurité, "
+            " horizon de temps) avant de proposer des produits SGCI. "
+            "- La monnaie de référence est le FCFA (Franc CFA). "
+            "Ne force pas la vente. Agis comme un partenaire de confiance pour"
+            " la gestion de leur patrimoine en Côte d'Ivoire. "
+            "- Base-toi sur le contexte suivant pour les infos concernant la "
+            "SGCI : {context}."),
         MessagesPlaceholder(variable_name="messages"),
     ])
 
@@ -63,7 +65,18 @@ def initialize_model():
     chain = prompt | model_with_tools
 
     def call_model(state: State):
-        response = chain.invoke(state)
+        # On extrait le contexte récupéré par le nœud précédent
+        context_docs = state.get("context", [])
+
+        # On transforme les documents en une seule chaîne de texte
+        context_text = "\n\n".join([doc.page_content for doc in context_docs])
+
+        # On injecte explicitement ce texte dans l'appel de la chaîne
+        # La chaîne utilisera alors context_text pour remplir {context} 
+        response = chain.invoke({
+            "messages": state["messages"],
+            "context": context_text
+        })
         return {"messages": response}
 
     def execute_tools(state: State):
