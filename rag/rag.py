@@ -3,12 +3,11 @@ from langchain_community.vectorstores import FAISS
 from langchain_community.document_loaders import WebBaseLoader, DataFrameLoader
 from langchain_community.retrievers import BM25Retriever
 from langchain_experimental.text_splitter import SemanticChunker  # type:ignore
-from langchain.retrievers import ParentDocumentRetriever
-from langchain.storage import InMemoryStore
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from nltk.tokenize import word_tokenize
 from dotenv import load_dotenv
 import pandas as pd
+import numpy as np
+import faiss
 import pickle
 import nltk
 import bs4
@@ -175,32 +174,39 @@ def extract_topic_from_url(url: str) -> str:
         return "information generale"
 
 
-def create_pc_retriever(all_docs, embeddings):
-    # 1. Le splitter pour les documents "Parents" (le contexte pour le LLM)
-    parent_splitter = RecursiveCharacterTextSplitter(chunk_size=1500)
-
-    # 2. Le splitter pour les documents "Enfants" (pour l'indexation)
-    child_splitter = RecursiveCharacterTextSplitter(chunk_size=300)
-
-    # 3. La base de données vectorielle qui stockera les "Enfants"
-    # On utilise un index vide au départ
-    vectorstore = FAISS.from_texts(["initialization"], embeddings)
-
-    # 4. Le stockage en mémoire pour les "Parents"
-    store = InMemoryStore()
-
-    # 5. Création du Retriever
-    pc_retriever = ParentDocumentRetriever(
-        vectorstore=vectorstore,
-        docstore=store,
-        child_splitter=child_splitter,
-        parent_splitter=parent_splitter,
+def create_dense_store(all_splits, embeddings):
+    '''Création d'un vector store FAISS optimisé (IndexIVFFlat)'''
+    # 1. Crée la base de données FAISS initiale (LangChain wrapper).
+    dense_store = FAISS.from_documents(
+        documents=all_splits,
+        embedding=embeddings,
     )
+    # Prépare les vecteurs NumPy pour FAISS
+    texts = [doc.page_content for doc in all_splits]
+    vectors = embeddings.embed_documents(texts)
+    vectors_np = np.array(vectors).astype("float32")
 
-    # Ajout des documents (le retriever s'occupe de faire les deux découpages)
-    pc_retriever.add_documents(all_docs)
+    # 2. Configure l'Index Inverted File (IVF)
+    embedding_dim = vectors_np.shape[1]
+    # Définit l'index de base (quantificateur) pour le clustering.
+    quantizer = faiss.IndexFlatL2(embedding_dim)
+    # Calcule le nombre de clusters (listes) pour l'index IVF.
+    nlist = min(20, (len(all_splits) // 10))
+    # Crée l'objet IndexIVFFlat (optimisation majeure pour la vitesse).
+    index = faiss.IndexIVFFlat(quantizer, embedding_dim, nlist,
+                               faiss.METRIC_L2)
 
-    return pc_retriever
+    # 3. Entraînement et Ajout
+    # Entraîne l'index à partitionner l'espace en 'nlist' clusters.
+    index.train(vectors_np)
+    # Définit le nombre de clusters à explorer lors d'une recherche
+    index.nprobe = min(10, (nlist//2))
+    index.add(vectors_np)
+
+    # 4. Finalisation
+    dense_store.index = index
+
+    return dense_store
 
 
 def create_sparse_retriever(all_splits):
@@ -245,28 +251,28 @@ def main():
     all_docs = load_docs(urls)
     xls_docs = load_excel(PRODUCTS_PATH)
     all_docs.extend(xls_docs)
-    all_splits = split_docs(all_docs, embeddings)
+    # all_splits = split_docs(all_docs, embeddings)
 
     print("Enrichissement des chunks avec les métadonnées de source...")
-    for split in all_splits:
-        source_url = split.metadata.get("source")
+    for doc in all_docs:
+        source_url = doc.metadata.get("source")
 
         if source_url:
             # Extraire un sujet lisible de l'URL
             topic = extract_topic_from_url(source_url)
 
             # Préfixer le contenu original avec le sujet
-            original_content = split.page_content
-            split.page_content = (
+            original_content = doc.page_content
+            doc.page_content = (
                 f"Sujet de la page: {topic}\n\n"
                 f"Contenu: {original_content}"
             )
     print("✅ Chunks enrichis.")
 
-    pc_retriever = create_pc_retriever(all_splits, embeddings)
-    sparse_retriever = create_sparse_retriever(all_splits)
+    dense_store = create_dense_store(all_docs, embeddings)
+    sparse_retriever = create_sparse_retriever(all_docs)
 
-    save_stores(pc_retriever, sparse_retriever,
+    save_stores(dense_store, sparse_retriever,
                 FAISS_INDEX_PATH, BM25_RETRIEVER_PATH)
 
 

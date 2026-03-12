@@ -10,3 +10,4 @@ class State(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
     language: str
     context: List[Document]
+    user_profile: dict
