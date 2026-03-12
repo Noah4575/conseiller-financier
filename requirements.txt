@@ -12,3 +12,8 @@ faiss-cpu
 rank_bm25
 nltk
 bs4
+openpyxl
+streamlit-mic-recorder
+whisper
+torch
+tinydb

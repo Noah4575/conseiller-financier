@@ -47,9 +47,21 @@ def setup_hybrid_retriever(embeddings):
     return compression_retriever
 
 
-def retrieve(state: State, hybrid_retriever: EnsembleRetriever):
+def retrieve(state: State, hybrid_retriever):
 
-    question = state["messages"][-1].content
+    messages = state["messages"]
+    last_message = messages[-1]
+
+    # Si le contenu est une liste (multimodal), on extrait uniquement le texte
+    if isinstance(last_message.content, list):
+        # On cherche l'élément qui a le type "text"
+        question = next(
+            (item["text"] for item in last_message.content if item["type"] == "text"),  # type: ignore
+            ""
+        )
+    else:
+        # C'est déjà une chaîne de caractères (cas classique)
+        question = last_message.content
 
     # Préparer les tâches de recherche
     retrieved_docs = hybrid_retriever.invoke(question)
