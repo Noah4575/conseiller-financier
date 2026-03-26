@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -12,15 +14,18 @@ from dotenv import load_dotenv
 from llm.core import State
 from tools.simul_credit import (simul_credit, simul_emprunt_max,
                                 simul_credit_immo)
-from tools.simul_placements import simul_dat, simul_car8
+from tools.simul_placements import (simul_credimatic, simul_dat, simul_car8,
+                                    simul_sogeprimo, simul_pel)
 from rag.retriever import retrieve, setup_hybrid_retriever
 from rag.retriever import initialize_embeddings
 
 # --- 1. Core Setup and Initialization ---
 # Load environment variables
 load_dotenv()
-os.environ["LANGCHAIN_TRACING_V2"] = os.environ.get("LANGCHAIN_TRACING_V2")
-os.environ["LANGCHAIN_API_KEY"] = os.environ.get("LANGCHAIN_API_KEY")
+os.environ["LANGCHAIN_TRACING_V2"] = os.environ.get(  # type: ignore
+    "LANGCHAIN_TRACING_V2")
+os.environ["LANGCHAIN_API_KEY"] = os.environ.get(  # type: ignore
+    "LANGCHAIN_API_KEY")
 
 
 # Initialize the Gemini model (using st.cache_resource for efficiency)
@@ -34,6 +39,8 @@ def initialize_model():
         st.error(f"Erreur d'initialisation du modèle: {e}."
                  "Vérifiez votre GOOGLE_API_KEY.")
         st.stop()
+
+    SIMULATOR_URL = "https://sgci-perso-cred.onrender.com/"
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", "Tu es un conseiller financier expert de la Société "
@@ -82,7 +89,8 @@ def initialize_model():
             "- Si le client dit 'mon solde', utilise la valeur {solde} FCFA "
             "sans redemander le montant."
             "- Si tu as les infos pour `simul_emprunt_max`, 'simul_epargne',"
-            " 'simul_dat', 'simul_credit_immo' ou 'simul_car8', applique la "
+            " 'simul_dat', 'simul_credit_immo', 'simul_car8','simul_sogeprimo'"
+            ", 'simul_credimatic', ou 'simul_pel' applique la "
             "même logique : identifie les données nécessaires, vérifie si tu "
             "les as déjà, et appelle l'outil sans délai."
             "- Si un produit mentionné dans le contexte (RAG) impose une durée"
@@ -92,6 +100,13 @@ def initialize_model():
             "une déception suite à un refus de crédit, lance IMMÉDIATEMENT "
             "l'outil simul_emprunt_max avec les revenus du profil et la durée "
             "mentionnée précédemment sans poser de question."
+            "4. Outil simulateur de crédit :"
+            "Lorsqu'un client demande une simulation de crédit, de prêt ou de"
+            " financement :"
+            "- Effectue d'abord la simulation avec tes outils."
+            "- Termine systématiquement ta réponse par cette phrase (en "
+            "Markdown) : 📊 Pour aller plus loin, explorez notre simulateur "
+            f"interactif : [Simulateur de crédit]({SIMULATOR_URL})"
             "STYLE ET DEONTOLOGIE :"
             "- La monnaie est le FCFA."
             "- Sois un partenaire de confiance : si tu vois un revenu élevé "
@@ -102,7 +117,7 @@ def initialize_model():
     ])
 
     tools = [simul_credit, simul_emprunt_max, simul_credit_immo, simul_dat,
-             simul_car8]
+             simul_car8, simul_credimatic, simul_sogeprimo, simul_pel]
     tool_map = {tool.name: tool for tool in tools}
     model_with_tools = model.bind_tools(tools)
     chain = prompt | model_with_tools
@@ -113,8 +128,10 @@ def initialize_model():
         context_text = "\n\n".join([doc.page_content for doc in context_docs])
 
         profile = state.get("user_profile", {})
-        revenus = profile.get("revenus") if profile.get("revenus") is not None else 0
-        solde = profile.get("solde") if profile.get("solde") is not None else 0
+        revenus = (profile.get("revenus")
+                   if profile.get("revenus") is not None else 0)
+        solde = (profile.get("solde")
+                 if profile.get("solde") is not None else 0)
 
         # On injecte explicitement ce texte dans l'appel de la chaîne
         # La chaîne utilisera alors context_text pour remplir {context}
@@ -136,7 +153,7 @@ def initialize_model():
     def execute_tools(state: State):
         last_message = state["messages"][-1]
         tool_messages = []
-        for tool_call in last_message.tool_calls:
+        for tool_call in last_message.tool_calls:  # type: ignore
             tool_func = tool_map[tool_call["name"]]
             output = tool_func.invoke(tool_call["args"])
             tool_messages.append(ToolMessage(content=str(output),
@@ -172,3 +189,24 @@ def initialize_model():
     app = workflow.compile(checkpointer=memory)
 
     return app
+
+
+def generate_conv_title(first_human_msg, first_ai_msg):
+    """Génère un titre de conversation à partir du premier échange."""
+    try:
+        model = init_chat_model("gemini-2.5-flash-lite",
+                                model_provider="google_genai")
+        prompt = (
+            "En te basant sur cet échange, génère un titre de conversation "
+            "très court (5 mots maximum), en français, sans guillemets, "
+            "sans ponctuation finale.\n\n"
+            f"Client : {first_human_msg[:500]}\n"
+            f"Conseiller : {first_ai_msg[:500]}\n\n"
+            "Titre :"
+        )
+        response = model.invoke(prompt)
+        title = response.content.strip().strip('"').strip("'")  # type: ignore
+        return title[:60]  # Sécurité : tronque si trop long
+    except Exception:
+        return f"Discussion du {
+            datetime.datetime.now().strftime('%d/%m %H:%M')}"  # type: ignore

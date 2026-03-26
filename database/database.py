@@ -1,8 +1,8 @@
 import uuid
-from tinydb import TinyDB, Query
+from tinydb import TinyDB, Query  # type: ignore
 import datetime
 
-db = TinyDB('sgci_data.json')
+db = TinyDB('database/sgci_data.json')
 users_table = db.table('users')
 conversations_table = db.table('conversations')
 
@@ -107,7 +107,7 @@ def create_user(user_id, password, nom, prenom, segment, solde, revenus):
 
 
 def get_all_users():
-    """Récupère tous les utilisateurs (sauf l'admin actuel pour éviter l'auto-suppression)."""
+    """Récupère tous les utilisateurs (sauf l'admin actuel)."""
     return [u for u in users_table.all() if u['id'] != 'admin']
 
 
@@ -115,8 +115,34 @@ def delete_user(user_id):
     """Supprime un utilisateur et ses conversations associées."""
     User = Query()
     # Supprimer l'utilisateur
+    if user_id == "admin":
+        return False
     users_table.remove(User.id == user_id)
     # Supprimer ses conversations
     Conv = Query()
     conversations_table.remove(Conv.user_id == user_id)
     return True
+
+
+def update_user(user_id, solde, revenus, segment):
+    """Met à jour les informations d'un utilisateur."""
+    User = Query()
+    users_table.update(
+        {"solde": solde, "revenus": revenus, "segment": segment},
+        User.id == user_id
+        )
+
+
+def get_segment(solde: int) -> str:
+    """Calcule le segment client selon le solde."""
+    if solde > 10_000_000:
+        return "High Net Worth"
+    elif solde > 1_000_000:
+        return "Affluent"
+    return "Mass Market"
+
+
+def update_conv_title(conv_id, new_title):
+    """Met à jour le titre d'une conversation."""
+    Q = Query()
+    conversations_table.update({"title": new_title}, Q.id == conv_id)

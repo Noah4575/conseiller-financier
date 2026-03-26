@@ -17,3 +17,4 @@ streamlit-mic-recorder
 whisper
 torch
 tinydb
+extra-streamlit-components

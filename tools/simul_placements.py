@@ -57,7 +57,7 @@ def simul_dat(produit: str, montant: int, duree: int):
 
 # --- Tool Definition ---
 @tool
-def simul_car8(produit: str, montant: int, duree: int, frequence: str):
+def simul_car8(produit: str, montant: int, frequence: str):
     """Simule un Dépôt à Terme (DAT) en fonction du montant
      et de la durée en mois.
     """
@@ -65,6 +65,7 @@ def simul_car8(produit: str, montant: int, duree: int, frequence: str):
     # On définit les bornes (en millions de FCFA)
     PALIERS_MONTANT = [5000000, 5000000000]
     TAUX_HT = 0.05
+    duree = 96
     options_valides = ["mensuelle", "trimestrielle", "semestrielle",
                        "annuelle"]
 
@@ -98,3 +99,114 @@ def simul_car8(produit: str, montant: int, duree: int, frequence: str):
                 f"- Si les intérêts sont distribués de manière {freq_final} : "
                 f"{interets_dist:,.0f} FCFA\n"
                 f"  Montant total à l'échéance : {total_dist:,.0f} FCFA\n")
+
+
+@tool
+def simul_pel(produit: str, depot_init: int, depot_mensuel: int,
+              duree: int):
+    """Simule un Plan d'Épargne Logement (PEL) en fonction de la duree
+    """
+    depot_init_min = 50000
+    depot_mensuel_min = 25000
+    taux = 0.035
+    PALIERS_DUREE = [36, 120]
+
+    if duree < PALIERS_DUREE[0] or duree > PALIERS_DUREE[1]:
+        return (f"Le produit '{produit}' n'est pas disponible pour une durée "
+                f"de {duree} mois. Veuillez choisir une durée entre "
+                f"{PALIERS_DUREE[0]} mois et {PALIERS_DUREE[1]} mois.")
+
+    if depot_init < depot_init_min or depot_mensuel < depot_mensuel_min:
+        return (f"Le produit '{produit}' n'est pas disponible pour un dépôt "
+                f"initial de {depot_init} FCFA ou un dépôt mensuel de "
+                f"{depot_mensuel} FCFA. Veuillez choisir un dépôt initial "
+                f"supérieur à {depot_init_min} FCFA et un dépôt mensuel "
+                f"supérieur à {depot_mensuel_min} FCFA.")
+
+    else:
+        total_depots = depot_init + depot_mensuel * duree
+        interets = total_depots * taux * (duree / 12)
+        total = total_depots + interets
+
+        return (f"Pour un {produit} sur {duree} mois :\n"
+                f"- Total des dépôts : {total_depots:,.0f} FCFA\n"
+                f"- Intérêts générés : {interets:,.0f} FCFA\n"
+                f"- Montant total à l'échéance : {total:,.0f} FCFA\n")
+
+
+@tool
+def simul_credimatic(produit: str, depot_init: int, depot_mensuel: int,
+                     duree: int):
+    """Simule un Plan d'Épargne Logement (PEL) en fonction de la duree
+    """
+    depot_init_min = 25000
+    depot_mensuel_min = 10000
+    montant_max = 5000000
+    taux = 0.035
+    PALIERS_DUREE = [12, 24]
+
+    if duree < PALIERS_DUREE[0] or duree > PALIERS_DUREE[1]:
+        return (f"Le produit '{produit}' n'est pas disponible pour une durée "
+                f"de {duree} mois. Veuillez choisir une durée entre "
+                f"{PALIERS_DUREE[0]} mois et {PALIERS_DUREE[1]} mois.")
+
+    if depot_init < depot_init_min or depot_mensuel < depot_mensuel_min:
+        return (f"Le produit '{produit}' n'est pas disponible pour un dépôt "
+                f"initial de {depot_init} FCFA ou un dépôt mensuel de "
+                f"{depot_mensuel} FCFA. Veuillez choisir un dépôt initial "
+                f"supérieur à {depot_init_min} FCFA et un dépôt mensuel "
+                f"supérieur à {depot_mensuel_min} FCFA.")
+
+    else:
+        total_depots = depot_init + depot_mensuel * duree
+        if total_depots > montant_max:
+            return (f"Le produit '{produit}' n'est pas disponible pour un "
+                    f"montant total de dépôts de {total_depots:,.0f} FCFA. "
+                    f"Veuillez choisir des dépôts inférieurs à {montant_max:,.0f} FCFA.")
+
+        interets = total_depots * taux * (duree / 12)
+        total = total_depots + interets
+
+        return (f"Pour un {produit} sur {duree} mois :\n"
+                f"- Total des dépôts : {total_depots:,.0f} FCFA\n"
+                f"- Intérêts générés : {interets:,.0f} FCFA\n"
+                f"- Montant total à l'échéance : {total:,.0f} FCFA\n")
+
+
+@tool
+def simul_sogeprimo(produit: str, depot_init: int, depot_mensuel: int,
+                    age: int):
+    """Simule un Compte d'Épargne Sogeprimo pour un mineur, en fonction de son
+    âge.
+    """
+    depot_mensuel_min = 5000
+    montant_max = 10000000
+    taux = 0.035
+    duree_max = 216
+
+    if age >= duree_max:
+        return (f"Le produit '{produit}' n'est pas disponible pour une "
+                f"personne de cet age. Elle doit être âgée de moins de "
+                "18 ans pour pouvoir souscrire à ce produit.")
+
+    if depot_mensuel < depot_mensuel_min:
+        return (f"Le produit '{produit}' n'est pas disponible pour un "
+                f"dépôt mensuel de {depot_mensuel} FCFA. Veuillez choisir "
+                f"un dépôt mensuel supérieur à {depot_mensuel_min} FCFA.")
+
+    else:
+        duree = duree_max - age
+        total_depots = depot_init + depot_mensuel * duree
+        if total_depots > montant_max:
+            return (f"Le produit '{produit}' n'est pas disponible pour un "
+                    f"montant total de dépôts de {total_depots:,.0f} FCFA. "
+                    "Veuillez choisir des dépôts inférieurs à "
+                    f"{montant_max:,.0f} FCFA.")
+
+        interets = total_depots * taux * (duree / 12)
+        total = total_depots + interets
+
+        return (f"Pour un {produit} sur {duree} mois :\n"
+                f"- Total des dépôts : {total_depots:,.0f} FCFA\n"
+                f"- Intérêts générés : {interets:,.0f} FCFA\n"
+                f"- Montant total à l'échéance : {total:,.0f} FCFA\n")

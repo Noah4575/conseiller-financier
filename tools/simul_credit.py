@@ -62,6 +62,7 @@ def simul_credit_immo(revenus: int, montant: int, duree: int):
     tx_assurance = 0.011        # 1.1% Annual Insurance (on Capital)
     tx_tps = 0.10               # 10% Tax (TOB) on Interest + Insurance
     nbr_paiements = duree * 12
+    frais = 0
 
     PALIERS_FRAIS_DOSSIER = [
         {
@@ -184,8 +185,12 @@ def simul_emprunt_max(revenus: int, duree: int):
 
 
 @tool
-def simul_epargne(versements : float, duree : int, cible : int):
+def simul_epargne(versements: float, duree: int, cible: int):
     """
-    Calcule la croissance d'une épargne avec des versements réguliers et des intérêts composés.
+    Calcule la croissance d'une épargne avec des versements réguliers
+     et des intérêts composés.
     """
-    return None
+    montant = versements * duree
+    diff = cible - montant
+
+    return diff

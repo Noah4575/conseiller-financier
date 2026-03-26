@@ -1,0 +1,32 @@
+header, .stAppHeader, [data-testid="stHeader"] {
+    display: none !important;
+    height: 0px !important;
+}
+.stAppViewMain { margin-top: -60px !important; }
+.block-container { padding-top: 0rem !important; padding-bottom: 0rem !important; }
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+.stColumn { display: flex; justify-content: flex-end; }
+
+[data-testid="stSidebar"][aria-expanded="false"] {
+    display: block !important;
+    width: 300px !important;
+}
+
+/* Bulle utilisateur */
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {
+    background-color: #f0f4ff !important;
+    border-radius: 12px !important;
+    border: 0.5px solid #ccd9f0 !important;
+    padding: 0.75rem !important;
+    margin-bottom: 0.5rem !important;
+}
+
+/* Bulle assistant */
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) {
+    background-color: #ffffff !important;
+    border-radius: 12px !important;
+    border: 0.5px solid #e8e8e8 !important;
+    padding: 0.75rem !important;
+    margin-bottom: 0.5rem !important;
+}
