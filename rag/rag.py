@@ -1,17 +1,15 @@
 from langchain_cohere import CohereEmbeddings  # type: ignore
 from langchain_community.vectorstores import FAISS
 from langchain_community.document_loaders import WebBaseLoader, DataFrameLoader
-from langchain_community.retrievers import BM25Retriever
 from langchain_experimental.text_splitter import SemanticChunker  # type:ignore
-from nltk.tokenize import word_tokenize
 from dotenv import load_dotenv
 import pandas as pd
 import numpy as np
 import faiss
-import pickle
 import nltk
 import bs4
 import os
+import re
 
 
 # Pages du Site Web SGCI
@@ -68,6 +66,15 @@ urls = {
         }
 
 
+def clean_text(text: str) -> str:
+    """Réinsère des espaces après la ponctuation et nettoie le texte."""
+    # Espace après ponctuation collée
+    text = re.sub(r'([.!?:])([A-ZÀ-Ü])', r'\1 \2', text)
+    # Supprime les espaces multiples
+    text = re.sub(r' +', ' ', text)
+    return text.strip()
+
+
 def load_docs(urls):
     '''Chargement du contenu des URLs dans des documents'''
     all_docs = []
@@ -81,6 +88,7 @@ def load_docs(urls):
                 )
             docs = loader.load()
             for doc in docs:
+                doc.page_content = clean_text(doc.page_content)
                 doc.metadata["source"] = url
                 doc.metadata["loaded_at"] = str(pd.Timestamp.now())
             all_docs.extend(docs)
@@ -209,41 +217,29 @@ def create_dense_store(all_splits, embeddings):
     return dense_store
 
 
-def create_sparse_retriever(all_splits):
-    '''Création d'un sparse retriever BM25'''
-    sparse_retriever = BM25Retriever.from_documents(
-        all_splits, k=6, preprocess_func=word_tokenize)
-    return sparse_retriever
-
-
-def save_stores(pc_retriever, sparse_retriever,
-                FAISS_INDEX_PATH, BM25_RETRIEVER_PATH):
-    '''Sauvegarde des retrievers pour éviter de les refaire à chaque fois'''
-    pc_retriever.save_local(FAISS_INDEX_PATH)
-
-    with open(BM25_RETRIEVER_PATH, "wb") as f:
-        pickle.dump(sparse_retriever, f)
-
-
-def load_stores(embeddings, FAISS_INDEX_PATH, BM25_RETRIEVER_PATH):
+def load_stores(embeddings, FAISS_INDEX_PATH):
     pc_retriever = FAISS.load_local(FAISS_INDEX_PATH, embeddings,
                                     allow_dangerous_deserialization=True)
     '''Chargement des retrievers précédemment sauvegardés'''
 
-    with open(BM25_RETRIEVER_PATH, "rb") as f:
-        sparse_retriever = pickle.load(f)
+    return pc_retriever
 
-    return pc_retriever, sparse_retriever
+
+def extract_product_name(url: str) -> str:
+    # Prend uniquement le dernier segment non vide de l'URL
+    last_segment = [p for p in url.strip("/").split("/") if p][-1]
+    # Remplace les tirets par des espaces et met en titre
+    return last_segment.replace("-", " ").title()
 
 
 def main():
     # Setup
     load_dotenv()
-    os.environ["COHERE_API_KEY"] = os.environ.get("COHERE_API_KEY")
-    embeddings = CohereEmbeddings(model="embed-multilingual-light-v3.0")
+    embeddings = CohereEmbeddings(model="embed-multilingual-light-v3.0",
+                                  cohere_api_key=os.environ.get(
+                                      "COHERE_API_KEY"))  # type: ignore
 
     FAISS_INDEX_PATH = os.environ.get("FAISS_INDEX_PATH")
-    BM25_RETRIEVER_PATH = os.environ.get("BM25_RETRIEVER_PATH")
     PRODUCTS_PATH = os.environ.get("PRODUCTS_PATH")
 
     nltk.download("punkt_tab")
@@ -263,17 +259,18 @@ def main():
 
             # Préfixer le contenu original avec le sujet
             original_content = doc.page_content
+            product_name = extract_product_name(source_url)
+
             doc.page_content = (
+                f"Produit: {product_name}\n"
                 f"Sujet de la page: {topic}\n\n"
                 f"Contenu: {original_content}"
             )
     print("✅ Chunks enrichis.")
 
     dense_store = create_dense_store(all_docs, embeddings)
-    sparse_retriever = create_sparse_retriever(all_docs)
 
-    save_stores(dense_store, sparse_retriever,
-                FAISS_INDEX_PATH, BM25_RETRIEVER_PATH)
+    dense_store.save_local(FAISS_INDEX_PATH)
 
 
 if __name__ == "__main__":

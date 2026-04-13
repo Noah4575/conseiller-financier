@@ -1,13 +1,13 @@
 📜 Conditions Générales d'Utilisation (CGU)
 
-1. Nature du Service
+1. Nature du Service : 
 L'application "Conseiller Financier IA" est un outil de simulation basé sur l'intelligence artificielle. Les réponses fournies sont à titre informatif et ne constituent en aucun cas un conseil financier contractuel ou officiel de la part de la SGCI.
 
-2. Utilisation des Données
+2. Utilisation des Données : 
 En vous inscrivant, vous acceptez que vos données (nom, prénom, solde, revenus) soient stockées dans notre base de données locale pour permettre la personnalisation des conseils. Vos conversations sont enregistrées pour assurer la continuité de votre expérience.
 
-3. Confidentialité
+3. Confidentialité : 
 Bien que les données soient stockées localement, les messages envoyés au chat sont traités par un modèle de langage (LLM). Nous vous recommandons de ne pas partager de codes secrets ou d'informations ultra-sensibles (mots de passe bancaires, codes de carte) dans le chat.
 
-4. Responsabilité
+4. Responsabilité : 
 L'utilisateur est seul responsable des décisions financières prises suite à l'utilisation de cet outil. Pour toute opération officielle (souscription de DAT, prêt, etc.), un rendez-vous avec un conseiller humain en agence reste obligatoire.
