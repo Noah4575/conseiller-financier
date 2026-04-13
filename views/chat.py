@@ -5,13 +5,14 @@ import streamlit as st
 from langchain_core.messages import HumanMessage, AIMessage
 from streamlit_mic_recorder import mic_recorder  # type: ignore
 
-from llm.llm import initialize_model, generate_conv_title
-from database.database import (create_new_conversation,
-                               update_conversation_messages, update_conv_title)
+from llm.llm import (_build_chain, _get_memory, _get_retriever, _get_tools,
+                     initialize_model, generate_conv_title)
+from database.database import (update_conversation_messages, update_conv_title)
 from components.sidebar import show_popups, show_sidebar
 from components.file_processor import process_file
 from services.audio import load_whisper_model
 from config import get_welcome_message
+from utils.session import init_session
 
 WELCOME_MESSAGE = get_welcome_message()
 
@@ -24,13 +25,23 @@ def show_chat_page():
 
     st.title("👨‍💼 Conseiller Financier IA")
 
-    app = initialize_model()
+    chain = _build_chain()
+    _, tool_map = _get_tools()
+    memory = _get_memory()
+    retriever = _get_retriever()
+
+    app = initialize_model(chain, tool_map, memory, retriever)
     model = load_whisper_model()
 
-    _init_session_state(user, user_convs)
+    init_session(user_convs)
 
     audio_data, files = _show_media_inputs()
     _display_chat_history()
+
+    if "pending_edit" in st.session_state and st.session_state.pending_edit:
+        pending = st.session_state.pop("pending_edit")
+        _handle_user_input(pending, [], app)
+        return
 
     query = st.chat_input("Votre demande...")
     transcribed_text = _transcribe_audio(audio_data, model)
@@ -41,20 +52,6 @@ def show_chat_page():
 
 
 # --- Fonctions internes ---
-
-def _init_session_state(user, user_convs):
-    if "messages" not in st.session_state:
-        st.session_state.messages = [AIMessage(content=WELCOME_MESSAGE)]
-
-    if "thread_id" not in st.session_state:
-        if user_convs:
-            st.session_state.thread_id = user_convs[0]['id']
-        else:
-            st.session_state.thread_id = create_new_conversation(user['id'])
-
-    if "uploader_key" not in st.session_state:
-        st.session_state.uploader_key = 0
-
 
 def _show_media_inputs():
     """Affiche les widgets audio et upload dans la sidebar."""
@@ -78,16 +75,51 @@ def _show_media_inputs():
 
 
 def _display_chat_history():
-    for message in st.session_state.messages:
+    for i, message in enumerate(st.session_state.messages):
         if isinstance(message, HumanMessage):
             with st.chat_message("user"):
+                # Extraire le texte brut selon le format du contenu
                 if isinstance(message.content, list):
+                    display_text = next(
+                        (b.get("display_text") or b.get("text", "")
+                         for b in message.content if b.get("type") == "text"),
+                        ""
+                    )
                     for block in message.content:
-                        if block.get("type") == "text":  # type: ignore
-                            text = block.get("display_text") or block.get("text")  # type: ignore
-                            st.markdown(text)  # type: ignore
-                        elif block.get("type") == "image_url":  # type: ignore
-                            st.image(block["image_url"]["url"])  # type: ignore
+                        if block.get("type") == "image_url":
+                            st.image(block["image_url"]["url"])
+                else:
+                    display_text = message.content
+
+                # Mode édition actif sur ce message
+                if st.session_state.editing_index == i:
+                    new_text = st.text_area(
+                        "Modifier votre message :",
+                        value=st.session_state.edit_text,
+                        key=f"edit_area_{i}"
+                    )
+                    col1, col2 = st.columns([1, 1])
+                    with col1:
+                        if st.button("✅ Valider", key=f"confirm_{i}"):
+                            # Tronquer l'historique à partir de ce message (exclu)
+                            st.session_state.messages = st.session_state.messages[:i]
+                            st.session_state.editing_index = None
+                            st.session_state.pending_edit = new_text
+                            st.rerun()
+                    with col2:
+                        if st.button("❌ Annuler", key=f"cancel_{i}"):
+                            st.session_state.editing_index = None
+                            st.rerun()
+                else:
+                    col_msg, col_btn = st.columns([0.95, 0.05])
+                    with col_msg:
+                        st.markdown(display_text)
+                    with col_btn:
+                        if st.button("✏️", key=f"edit_{i}", help="Modifier ce message"):
+                            st.session_state.editing_index = i
+                            st.session_state.edit_text = display_text
+                            st.rerun()
+
         elif isinstance(message, AIMessage):
             with st.chat_message("assistant"):
                 st.markdown(message.content)
@@ -131,6 +163,7 @@ def _handle_user_input(final_input: str, files, app):
 
     if files:
         st.session_state.uploader_key += 1
+
     st.rerun()
 
 
@@ -146,14 +179,15 @@ def _stream_ai_response(app) -> str:
 
         message_placeholder = st.empty()
         full_response = ""
+
         with st.spinner("Génération de la réponse..."):
-            for event in app.stream(inputs, config, stream_mode="values"):
-                if "messages" in event:
-                    msg = event["messages"][-1]
-                    if (isinstance(msg, AIMessage) and msg.content
-                            and not msg.tool_calls):
-                        full_response = msg.content
-                        message_placeholder.markdown(full_response)
+            for chunk, metadata in app.stream(inputs, config, stream_mode="messages"):
+                if (metadata.get("langgraph_node") == "model"
+                    and hasattr(chunk, "content")
+                    and isinstance(chunk.content, str)
+                    and chunk.content):
+                    full_response += chunk.content
+                    message_placeholder.markdown(full_response)
 
     if (not st.session_state.messages
             or st.session_state.messages[-1].content != full_response):
@@ -181,7 +215,7 @@ def _save_conversation(full_response: str):
         m, AIMessage) and m.content]
 
     # Génération automatique du titre à la première réponse
-    if len(human_msgs) == 1 and len(ai_msgs) == 1:
+    if len(human_msgs) == 1 and len(ai_msgs) == 2:
         first_human = human_msgs[0].content
         if isinstance(first_human, list):
             first_human = next(

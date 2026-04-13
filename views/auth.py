@@ -1,6 +1,7 @@
 import streamlit as st
-from database.database import get_user_data, create_user, get_segment
-from utils.session import save_session_to_cookie
+from database.database import (create_user, get_segment,
+                               verify_user)
+# from utils.session import save_session_to_cookie
 
 
 def show_auth_page():
@@ -20,8 +21,8 @@ def _show_login_form():
     password = st.text_input("Mot de passe", type="password")
 
     if st.button("Se connecter"):
-        user_data = get_user_data(user_id)
-        if user_data and user_data["password"] == password:
+        user_data = verify_user(user_id, password)
+        if user_data:
             st.session_state.authentified = True
             st.session_state.user_id = user_id
             st.session_state.user_info = user_data

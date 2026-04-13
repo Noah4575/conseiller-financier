@@ -162,7 +162,8 @@ def simul_credimatic(produit: str, depot_init: int, depot_mensuel: int,
         if total_depots > montant_max:
             return (f"Le produit '{produit}' n'est pas disponible pour un "
                     f"montant total de dépôts de {total_depots:,.0f} FCFA. "
-                    f"Veuillez choisir des dépôts inférieurs à {montant_max:,.0f} FCFA.")
+                    f"Veuillez choisir des dépôts inférieurs à {
+                        montant_max:,.0f} FCFA.")
 
         interets = total_depots * taux * (duree / 12)
         total = total_depots + interets

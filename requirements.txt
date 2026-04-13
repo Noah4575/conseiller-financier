@@ -18,3 +18,4 @@ whisper
 torch
 tinydb
 extra-streamlit-components
+bcrypt

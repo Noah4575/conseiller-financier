@@ -1,6 +1,6 @@
 import streamlit as st
 from database.database import init_db
-from utils.session import restore_session_from_cookie
+# from utils.session import restore_session_from_cookie
 from views.auth import show_auth_page
 from views.chat import show_chat_page
 from utils.styles import inject_styles

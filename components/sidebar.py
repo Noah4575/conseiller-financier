@@ -1,15 +1,19 @@
 import datetime
+import os
 
+from dotenv import load_dotenv
 import streamlit as st
-from langchain_core.messages import HumanMessage, AIMessage
 
 from database.database import (
-    get_user_conversations, create_new_conversation,
+    delete_conversation, get_user_conversations, create_new_conversation,
     get_all_users, delete_user, update_user, get_segment
 )
 from components.notifs import get_notif_solde
-from utils.session import clear_session_cookie
+# from utils.session import clear_session_cookie
 from config import get_welcome_message
+from utils.session import switch_conversation, reset_session
+
+load_dotenv()
 
 WELCOME_MESSAGE = get_welcome_message()
 
@@ -19,12 +23,12 @@ def show_popups(user_info):
     notifs = get_notif_solde(user_info)
     count = len(notifs)
 
-    SIMULATOR_URL = "https://sgci-perso-cred.onrender.com/"
+    SIMULATOR_URL = os.getenv("SIMULATOR_URL")
 
     _, col_notif, col_sim = st.columns([0.8, 0.1, 0.1])
 
     with col_sim:
-        st.link_button("Sim crédit", url=SIMULATOR_URL)
+        st.link_button("Sim crédit", url=SIMULATOR_URL)  # type: ignore
     with col_notif:
         label = f"🔔 ({count})" if count > 0 else "🔔"
         with st.popover(label):
@@ -81,10 +85,8 @@ def _show_profile_update(user):
 def _show_logout_button():
     if st.sidebar.button("🚪 Déconnexion", use_container_width=True):
         # clear_session_cookie()
+        reset_session()
         st.session_state.authentified = False
-        st.session_state.user_id = None
-        st.session_state.user_info = None
-        st.session_state.messages = []
         st.rerun()
 
 
@@ -101,10 +103,8 @@ def _confirm_delete_dialog(user):
                      use_container_width=True):
             delete_user(user['id'])
             # clear_session_cookie()
+            reset_session()
             st.session_state.authentified = False
-            st.session_state.user_id = None
-            st.session_state.user_info = None
-            st.session_state.messages = []
             st.rerun()
     with col2:
         if st.button("Annuler", use_container_width=True):
@@ -141,27 +141,38 @@ def _show_conversation_history() -> list:
     st.sidebar.subheader("Historique des conversations")
 
     if st.sidebar.button("➕ Nouvelle conversation"):
-        timestamp = datetime.datetime.now().strftime('%d/%m %H:%M')
-        new_conv_id = create_new_conversation(
-            st.session_state.user_id,
-            title=f"Discussion du {timestamp}"
-        )
-        st.session_state.thread_id = new_conv_id
-        st.session_state.messages = [AIMessage(content=WELCOME_MESSAGE)]
+        switch_conversation()
         st.rerun()
 
     user_convs = get_user_conversations(st.session_state.user_id)
 
     for conv in user_convs:
-        if st.sidebar.button(f"💬 {conv['title']}", key=conv['id'],
-                             use_container_width=True):
-            st.session_state.thread_id = conv['id']
-            loaded_messages = [
-                HumanMessage(content=m['content']) if m['type'] == 'human'
-                else AIMessage(content=m['content'])
-                for m in conv['messages']
-            ]
-            st.session_state.messages = loaded_messages
-            st.rerun()
+        col_title, col_del = st.sidebar.columns([0.8, 0.2])
+        with col_title:
+            if st.button(f"💬 {conv['title']}", key=conv['id'],
+                         use_container_width=True):
+                switch_conversation(conv)
+                st.rerun()
+        with col_del:
+            if st.button("🗑️", key=f"del_{conv['id']}",
+                         help="Supprimer cette conversation",
+                         use_container_width=False):
+                _confirm_delete_conv(conv)
 
     return user_convs
+
+
+@st.dialog("Supprimer la conversation")
+def _confirm_delete_conv(conv):
+    st.write(f"Supprimer **{conv['title']}** ?")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("✅ Confirmer", type="primary", use_container_width=True):
+            delete_conversation(conv['id'])
+            # Si on supprime la conv active, on réinitialise
+            if st.session_state.get("thread_id") == conv['id']:
+                reset_session()
+            st.rerun()
+    with col2:
+        if st.button("Annuler", use_container_width=True):
+            st.rerun()

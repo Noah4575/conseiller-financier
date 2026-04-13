@@ -30,3 +30,19 @@ footer { visibility: hidden; }
     padding: 0.75rem !important;
     margin-bottom: 0.5rem !important;
 }
+
+[data-testid="stHorizontalBlock"] button[kind="secondary"] {
+    padding: 0px 6px;
+    font-size: 11px;
+    height: 24px;
+    min-height: 0;
+    line-height: 1;
+    background: transparent;
+    border: none;
+    color: #888;
+}
+
+[data-testid="stHorizontalBlock"] button[kind="secondary"]:hover {
+    color: #333;
+    background: #f0f0f0;
+}
