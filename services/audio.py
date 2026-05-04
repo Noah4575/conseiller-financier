@@ -8,7 +8,6 @@ import whisper  # type: ignore
 @st.cache_resource
 def load_whisper_model():
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(device)
     return whisper.load_model("turbo").to(device)
 
 
